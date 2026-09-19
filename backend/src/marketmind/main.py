@@ -122,7 +122,7 @@ def ready(request: Request) -> HealthResponse:
         connection.execute(text("SELECT 1"))
         # A reachable database without the deployed schema is not ready to serve the API.
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "20260918_0003":
+        if revision != "20260919_0004":
             raise ApiError(503, "schema_not_ready", "The database schema is not ready")
     if not request.app.state.redis.ping():
         raise ApiError(503, "dependency_unavailable", "A required service is unavailable")
