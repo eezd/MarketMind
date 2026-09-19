@@ -25,7 +25,7 @@ const statusLabels: Record<string, string> = {
   completed: '已完成',
   rejected: '已拒绝',
   healthy: '健康',
-  unknown: '尚未检查',
+  unknown: '状态未知',
   cooling_down: '冷却中',
   unavailable: '不可用',
   authenticated: '已验证登录',

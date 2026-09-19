@@ -102,7 +102,7 @@ export interface ProxyEndpoint {
   health_status?: string
   last_success_at?: string | null
   consecutive_failures?: number
-  source_health?: { source_id: string, status: string, consecutive_failures: number, last_success_at: string | null }[]
+  source_health?: { source_id: string, status: string, consecutive_failures: number, last_success_at: string | null, last_checked_at: string | null, cooldown_until: string | null, error_code: string | null }[]
 }
 
 export interface Command {

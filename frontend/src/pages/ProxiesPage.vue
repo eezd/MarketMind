@@ -103,6 +103,27 @@ async function check(proxy: ProxyEndpoint) {
     page.report(cause)
   }
 }
+async function checkAll() {
+  const enabled = proxies.value.filter(proxy => proxy.enabled)
+  if (!enabled.length) {
+    notice.value = '当前列表没有已启用的代理。'
+    return
+  }
+  let submitted = 0
+  for (const proxy of enabled) {
+    try {
+      await ops.submit(`/proxies/${proxy.id}/check`, undefined, `检查 ${proxy.name}`, '/proxy-checks')
+      submitted += 1
+    }
+    catch (cause) {
+      page.report(cause)
+      break
+    }
+  }
+  notice.value = submitted === enabled.length
+    ? `已提交 ${submitted} 个代理的健康检查；执行结果将在操作回执中更新。`
+    : `已提交 ${submitted}/${enabled.length} 个代理的健康检查；其余未提交，请处理错误后重试。`
+}
 function parseProxyLine(rawLine: string, lineNumber: number) {
   const [endpoint, username, ...passwordParts] = rawLine.split('@')
   const separator = endpoint.lastIndexOf(':')
@@ -188,9 +209,13 @@ onMounted(() => load())
           <h2>出口资源</h2><p class="muted">
             连通成功不等于目标站点可用。配置来源顺序后才会使用。
           </p>
-        </div><ElButton :loading="loading" @click="load()">
-          刷新健康状态
-        </ElButton>
+        </div><div class="row-actions">
+          <ElButton :loading="loading" @click="load()">
+            刷新列表
+          </ElButton><ElButton type="primary" :loading="busy" :disabled="!proxies.some(proxy => proxy.enabled)" @click="checkAll">
+            检查当前列表
+          </ElButton>
+        </div>
       </header>
       <ElTable :data="proxies" class="data-table" empty-text="暂无代理；来源默认直连">
         <ElTableColumn label="代理" min-width="210">
@@ -210,10 +235,12 @@ onMounted(() => load())
             {{ row.expires_at ? formatDate(row.expires_at) : '未设置' }}
           </template>
         </ElTableColumn>
-        <ElTableColumn label="来源健康 / 最近成功" min-width="235">
+        <ElTableColumn label="来源健康 / 最近检查" min-width="265">
           <template #default="{ row }">
             <span v-if="!row.source_health?.length" class="muted">尚未检查</span><div v-for="health in row.source_health" :key="health.source_id" class="cell-subtext">
-              <span class="mono">{{ health.source_id }}</span><br>{{ statusLabel(health.status) }} · 连续失败 {{ health.consecutive_failures }}<br>{{ formatDate(health.last_success_at) }}
+              <span class="mono">{{ health.source_id }}</span><br>{{ statusLabel(health.status) }} · 连续失败 {{ health.consecutive_failures }}<br>最近检查 {{ formatDate(health.last_checked_at) }}<br>最近成功 {{ formatDate(health.last_success_at) }}<template v-if="health.error_code">
+                <br>异常 {{ health.error_code }}
+              </template>
             </div>
           </template>
         </ElTableColumn>
