@@ -103,23 +103,56 @@ async function check(proxy: ProxyEndpoint) {
     page.report(cause)
   }
 }
-async function importProxies() {
-  let items: unknown
-  try {
-    items = JSON.parse(importText.value)
+function parseProxyLine(rawLine: string, lineNumber: number) {
+  const [endpoint, username, ...passwordParts] = rawLine.split('@')
+  const separator = endpoint.lastIndexOf(':')
+  if (separator <= 0 || separator === endpoint.length - 1)
+    throw new Error(`第 ${lineNumber} 行必须使用 host:port 格式。`)
+
+  const host = endpoint.slice(0, separator).trim()
+  const portText = endpoint.slice(separator + 1).trim()
+  const port = Number(portText)
+  if (!host || !/^\d+$/.test(portText) || !Number.isInteger(port) || port < 1 || port > 65535)
+    throw new Error(`第 ${lineNumber} 行的主机或端口无效。`)
+  if (username !== undefined && (!username || !passwordParts.length || !passwordParts.join('@')))
+    throw new Error(`第 ${lineNumber} 行必须同时提供用户名和密码。`)
+
+  const endpointName = `${host}:${port}`
+  return {
+    name: endpointName.length <= 100 ? endpointName : `proxy-${lineNumber}`,
+    scheme: 'http',
+    host,
+    port,
+    enabled: true,
+    ...(username === undefined ? {} : { username, password: passwordParts.join('@') }),
   }
-  catch {
-    error.value = '导入内容必须为 JSON 数组，请核对语法。'
+}
+async function importProxies() {
+  const lines = importText.value
+    .split(/\r?\n/)
+    .map((text, index) => ({ text: text.trim(), lineNumber: index + 1 }))
+    .filter(line => line.text)
+  if (!lines.length) {
+    error.value = '请提供至少一行代理。'
     return
   }
-  if (!Array.isArray(items) || !items.length || items.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
-    error.value = '请提供至少一个代理对象组成的 JSON 数组。'
+  if (lines.length > 200) {
+    error.value = '单次最多导入 200 个代理。'
+    return
+  }
+
+  let items
+  try {
+    items = lines.map(line => parseProxyLine(line.text, line.lineNumber))
+  }
+  catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '代理格式无效。'
     return
   }
   try {
     const result = await ops.mutate<{ items: { index: number, status: 'created' | 'error', id?: string, message?: string }[] }>('/proxies/import', { items })
     importText.value = ''
-    importNotice.value = result.items.map(item => `第 ${item.index + 1} 条：${item.status === 'created' ? '已导入' : `失败 · ${item.message || '请检查输入'}`}`).join('；')
+    importNotice.value = result.items.map(item => `第 ${lines[item.index]?.lineNumber ?? item.index + 1} 行：${item.status === 'created' ? '已导入' : `失败 · ${item.message || '请检查输入'}`}`).join('；')
     await load()
   }
   catch (cause) {
@@ -226,8 +259,8 @@ onMounted(() => load())
       <ElAlert v-if="importNotice" :title="importNotice" type="info" :closable="false" class="mb-5" />
       <form class="operation-form" @submit.prevent="importProxies">
         <p class="muted">
-          粘贴 JSON 数组。每项包含 name、scheme（http）、host、port、enabled，可选 username、password、expires_at。提交后立即清空输入，不回显凭证。
-        </p><label>代理 JSON 数组<ElInput v-model="importText" type="textarea" :rows="10" autocomplete="off" aria-label="批量代理 JSON" /></label><ElButton native-type="submit" type="primary" :loading="busy" :disabled="!importText.trim()">
+          每行一个 HTTP 代理，最多 200 行，空行自动忽略。无认证使用 host:port；需要认证使用 host:port@username@password。名称按地址自动生成，默认启用且不限有效期；密码中的后续 @ 会原样保留。提交后立即清空输入，凭证不会回显。
+        </p><label>代理列表<ElInput v-model="importText" type="textarea" :rows="10" autocomplete="off" aria-label="逐行批量代理" placeholder="203.0.113.10:8080@username@password&#10;proxy.example.com:3128" /></label><ElButton native-type="submit" type="primary" :loading="busy" :disabled="!importText.trim()">
           导入并查看逐条结果
         </ElButton>
       </form>
