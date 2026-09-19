@@ -111,7 +111,7 @@ export interface Command {
   result?: {
     message?: string
     error_code?: string
-    items?: { source_id: string, status: string }[]
+    items?: { source_id: string, status: string, error_code?: string }[]
     [key: string]: unknown
   } | null
 }

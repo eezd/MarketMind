@@ -575,6 +575,38 @@ def _finish_check(check_id: UUID, result: dict[str, Any], succeeded: bool) -> No
         row.result, row.completed_at, row.lease_until = result, datetime.now(UTC), None
 
 
+def _check_error_code(error: Exception) -> str:
+    if isinstance(error, SourceError):
+        return error.code
+    if isinstance(error, httpx.ReadTimeout):
+        return "read_timeout"
+    if isinstance(error, httpx.WriteTimeout):
+        return "write_timeout"
+    if isinstance(error, httpx.PoolTimeout):
+        return "pool_timeout"
+    if isinstance(error, httpx.ConnectTimeout):
+        return "connect_timeout"
+    if isinstance(error, httpx.ProxyError):
+        return "proxy_error"
+    if isinstance(error, httpx.ConnectError):
+        return "connection_failed"
+    if isinstance(error, httpx.RemoteProtocolError):
+        return "remote_protocol_error"
+    if isinstance(error, httpx.LocalProtocolError):
+        return "local_protocol_error"
+    if isinstance(error, httpx.ReadError):
+        return "read_error"
+    if isinstance(error, httpx.WriteError):
+        return "write_error"
+    if isinstance(error, httpx.ProtocolError):
+        return "protocol_error"
+    if isinstance(error, httpx.TimeoutException | TimeoutError):
+        return "check_timeout"
+    if isinstance(error, httpx.HTTPError):
+        return "http_error"
+    return "check_incomplete"
+
+
 async def run_check(check_id: UUID) -> None:
     results: list[dict[str, Any]] = []
     try:
@@ -595,7 +627,7 @@ async def run_check(check_id: UUID) -> None:
                 "interval_seconds": interval,
             }
             token = request_context.set(context)
-            status = "unknown"
+            status, error_code = "unknown", None
             try:
                 async with (
                     asyncio.timeout(45),
@@ -613,16 +645,22 @@ async def run_check(check_id: UUID) -> None:
                         # Receiving actual controlled HTTPS headers proves this source path only.
                         status = "healthy" if 200 <= response.status_code < 300 else "unavailable"
                         if status != "healthy":
-                            await asyncio.to_thread(_record_check_restriction, context, response.status_code)
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError):
+                            error_code = f"http_{response.status_code}"
+                            await asyncio.to_thread(_record_check_restriction, context, error_code)
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError) as error:
+                error_code = _check_error_code(error)
                 await note_transport_failure()
                 status = "cooling_down"
-            except (httpx.HTTPError, SourceError, TimeoutError):
+            except (httpx.HTTPError, SourceError, TimeoutError) as error:
+                error_code = _check_error_code(error)
                 status = "unknown"
-                await asyncio.to_thread(_record_check_restriction, context, None)
+                await asyncio.to_thread(_record_check_restriction, context, error_code)
             finally:
                 request_context.reset(token)
-            results.append({"source_id": str(source_id), "status": status})
+            result = {"source_id": str(source_id), "status": status}
+            if error_code:
+                result["error_code"] = error_code
+            results.append(result)
         await asyncio.to_thread(_finish_check, check_id, {"items": results}, True)
     except Exception:
         await asyncio.to_thread(
@@ -630,14 +668,14 @@ async def run_check(check_id: UUID) -> None:
         )
 
 
-def _record_check_restriction(context: dict[str, Any], status: int | None) -> None:
+def _record_check_restriction(context: dict[str, Any], error_code: str) -> None:
     with Session(_engine()) as db, db.begin():
         db.scalar(select(ProxyEndpoint).where(ProxyEndpoint.id == context["proxy_id"]).with_for_update())
         row = db.get(ProxySourceHealth, (context["proxy_id"], context["source_id"]))
         if row is None:
             row = ProxySourceHealth(proxy_id=context["proxy_id"], source_id=context["source_id"])
             db.add(row)
-        row.last_checked_at, row.error_code = datetime.now(UTC), f"http_{status}" if status else "check_incomplete"
+        row.last_checked_at, row.error_code = datetime.now(UTC), error_code
         # Authorization and server errors never rotate egress to bypass site restrictions.
         row.status = "unknown"
 

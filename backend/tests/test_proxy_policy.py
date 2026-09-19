@@ -78,6 +78,22 @@ def test_target_requires_credential_free_official_https(url: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (httpx.ReadTimeout("timed out"), "read_timeout"),
+        (httpx.RemoteProtocolError("disconnected"), "remote_protocol_error"),
+        (httpx.ConnectTimeout("timed out"), "connect_timeout"),
+        (httpx.ProxyError("proxy rejected"), "proxy_error"),
+        (httpx.ConnectError("connection failed"), "connection_failed"),
+        (SourceError("unsafe_target", "blocked"), "unsafe_target"),
+        (TimeoutError(), "check_timeout"),
+    ],
+)
+def test_proxy_check_preserves_actionable_failure_code(error: Exception, expected: str) -> None:
+    assert proxy_runtime._check_error_code(error) == expected
+
+
+@pytest.mark.parametrize(
     "addresses",
     [
         ["10.20.30.40"],

@@ -23,7 +23,9 @@ defineProps<{ commands: TrackedCommand[] }>()
         {{ command.last_error }}
       </p>
       <p v-for="(item, index) in command.endpoint === '/proxy-checks' ? command.result?.items || [] : []" :key="index" class="muted">
-        <span class="mono">{{ item.source_id }}</span> · {{ statusLabel(item.status) }}
+        <span class="mono">{{ item.source_id }}</span> · {{ statusLabel(item.status) }}<template v-if="item.error_code">
+          · {{ item.error_code }}
+        </template>
       </p>
     </article>
   </section>

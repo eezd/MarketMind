@@ -722,3 +722,10 @@ uv run --project backend --env-file .env.acceptance python -m marketmind.schedul
 - **验证**：隔离PostgreSQL事务回滚与离线Chromium等后端回归共69项通过；Ruff检查与格式检查通过。新增数据库连接中断回归，确保来源锁清理不会以 `PendingRollbackError` 覆盖原始故障。另在隔离Redis、随机来源键下实测Lua/锁：交错成功重置计数、告警打开/恢复/再打开、Retry-After不变；临时键已清理，未向Telegram发送消息。
 - **修复版镜像与生效窗口**：本地镜像 `marketmind-backend:fix-soak` 版本 `2026.09.18.fix1`、uid999，manifest list `sha256:55c6cb8561e13f759dc371ade98394526f4d321ae1c29bd315e751ed65410870`；在隔离Compose网络内 `alembic check` 无模型差异。调度器、见闻/财联社执行器和仅依赖健康模式的通知worker均由该镜像持续运行，金十保持禁用。新版共同24小时观测从 `2026-09-18T05:43:09.164117+00:00` 开始，证据写入 `.codex/tasks/phase-1-fix1-soak.json`；尚未满24小时，不能标记通过。
 - **启动见证与边界**：财联社深度、电报实时均成功，旧电报回补的真实 `parse_error` 保持暂停但未再阻断实时；见闻实时成功，新闻与快讯回补均已推进。切换期间发现并清除首批孤儿容器，最终每个角色仅一套修复版容器；监督进程跨调度周期保持ready。数据库中旧版遗留的活动 `rate_limited` / `parse_failed` 告警未自动清理，验收时须按事件时间与新版状态分开判断。未发布远端、未部署生产、未发送真实Telegram消息。
+
+### 16.6 代理导入与健康检查补充（2026-09-19）
+
+- 代理库存支持逐行导入 `host:port` 或 `host:port@username@password`；凭证仍加密保存且不回显。管理页将“刷新列表”与“检查当前列表”分开，检查任务逐条返回来源状态和稳定错误码。
+- 生产检查 worker 正常消费任务；检查任务 `succeeded` 仅表示探测流程执行完成，不表示代理健康。页面展示最近检查、最近成功和错误码，已检查但无法判定的结果不再显示为“尚未检查”。
+- 本次抽样代理对三个固定官方 HTTPS 目标均在 HTTP CONNECT 路径得到 `remote_protocol_error`；同一端点的 SOCKS5 只读探测得到 `ProtocolError`。因此不能认定该批代理可用，需向代理提供方核对协议、账号授权方式、来源 IP 白名单及有效期。
+- 三个来源当前均未绑定库存代理，采集仍使用既有直连策略；在代理检查健康前不自动绑定，避免把现有采集切换到未经验证的出口。
