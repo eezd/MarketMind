@@ -1,0 +1,40 @@
+name: Publish dated source release
+
+on:
+  push:
+    tags: ['v20*.*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yml
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate source release
+        shell: bash
+        run: |
+          python3 -c "import datetime, os, re; tag=os.environ['RELEASE_TAG']; assert re.fullmatch(r'v20\d{2}\.\d{2}\.\d{2}\.[1-9]\d*', tag); datetime.date.fromisoformat(tag[1:].rsplit('.', 1)[0].replace('.', '-'))"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; choose a new date sequence' >&2
+            exit 1
+          fi
+      - name: Publish source release
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag \
+            --title "MarketMind ${RELEASE_TAG#v}" --generate-notes

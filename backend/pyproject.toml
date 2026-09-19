@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "marketmind"
+version = "2026.9.19.1"
+description = "MarketMind collection management API"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "redis>=5,<7",
+  "pydantic-settings>=2.7,<3",
+  "argon2-cffi>=23.1,<26",
+  "alembic>=1.14,<2",
+  "scrapy>=2.13,<3",
+  "scrapy-redis>=0.9,<1",
+  "httpx[socks]>=0.28,<1",
+  "websockets>=15,<16",
+  "python-socks[asyncio]>=2.7,<3",
+  "playwright>=1.55,<2",
+  "cryptography>=44,<51",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.9,<1", "pytest>=8,<10", "httpx>=0.28,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/marketmind"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
